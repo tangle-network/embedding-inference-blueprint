@@ -4194,6 +4194,7 @@ dependencies = [
  "blueprint-sdk",
  "config",
  "dotenvy",
+ "futures",
  "hex",
  "k256",
  "prometheus 0.13.4",
