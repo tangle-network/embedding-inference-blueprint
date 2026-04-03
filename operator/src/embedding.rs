@@ -6,8 +6,8 @@
 //! and return:
 //!   { "data": [{"embedding": [...], "index": 0}], "usage": {"prompt_tokens": N, "total_tokens": N} }
 
-use blueprint_std::sync::Arc;
-use blueprint_std::time::Duration;
+use blueprint_sdk::std::sync::Arc;
+use blueprint_sdk::std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
