@@ -109,6 +109,36 @@ pub fn router() -> Router {
         )
 }
 
+/// Direct embedding call -- same logic as run_embedding but without TangleArg.
+/// Used for testing without the Tangle context.
+pub async fn embed_direct(request: &EmbeddingRequest) -> Result<EmbeddingResult, RunnerError> {
+    let endpoint = EMBEDDING_ENDPOINT.get().ok_or_else(|| {
+        RunnerError::Other("embedding endpoint not registered".into())
+    })?;
+
+    let inputs: Vec<String> = request.inputs.iter().cloned().collect();
+
+    if inputs.is_empty() {
+        return Err(RunnerError::Other("empty input list".into()));
+    }
+
+    let resp = endpoint
+        .backend
+        .embed(inputs)
+        .await
+        .map_err(|e| RunnerError::Other(format!("embedding request failed: {e}").into()))?;
+
+    let count = resp.data.len() as u32;
+    let total_tokens = resp.usage.as_ref().map(|u| u.total_tokens).unwrap_or(0);
+    let dimensions = resp.data.first().map(|d| d.embedding.len() as u32).unwrap_or(0);
+
+    Ok(EmbeddingResult {
+        count,
+        totalTokens: total_tokens,
+        dimensions,
+    })
+}
+
 // --- Job handler ---
 
 /// Handle an embedding job submitted on-chain.
