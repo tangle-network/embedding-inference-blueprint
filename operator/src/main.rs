@@ -8,7 +8,7 @@ use blueprint_sdk::runner::BlueprintRunner;
 use blueprint_sdk::tangle::{TangleConsumer, TangleProducer};
 
 use embedding_inference::config::OperatorConfig;
-use embedding_inference::health;
+use embedding_inference::detect_gpus;
 use embedding_inference::EmbeddingServer;
 
 fn setup_log() {
@@ -72,7 +72,7 @@ async fn main() -> Result<(), blueprint_sdk::Error> {
     }
 
     // Check GPU availability (non-fatal)
-    match health::detect_gpus().await {
+    match detect_gpus().await {
         Ok(gpus) => {
             tracing::info!(count = gpus.len(), "detected GPUs");
             for gpu in &gpus {

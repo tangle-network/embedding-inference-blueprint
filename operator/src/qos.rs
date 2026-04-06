@@ -19,6 +19,7 @@ use alloy::{
 };
 
 use crate::config::OperatorConfig;
+use tangle_inference_core::metrics;
 
 sol! {
     #[sol(rpc)]
@@ -38,28 +39,15 @@ sol! {
 }
 
 /// QoS configuration embedded in OperatorConfig.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct QoSConfig {
     /// Heartbeat interval in seconds. 0 = disabled.
-    #[serde(default = "default_heartbeat_interval")]
+    #[serde(default)]
     pub heartbeat_interval_secs: u64,
 
     /// On-chain address of the IOperatorStatusRegistry contract.
     #[serde(default)]
     pub status_registry_address: Option<String>,
-}
-
-impl Default for QoSConfig {
-    fn default() -> Self {
-        Self {
-            heartbeat_interval_secs: 0,
-            status_registry_address: None,
-        }
-    }
-}
-
-fn default_heartbeat_interval() -> u64 {
-    0
 }
 
 /// Start the QoS heartbeat loop as a background task.
@@ -109,9 +97,11 @@ pub async fn start_heartbeat(
             .await
             {
                 Ok(()) => {
+                    metrics::HEARTBEATS_SENT.inc();
                     tracing::debug!(service_id, blueprint_id, "heartbeat submitted");
                 }
                 Err(e) => {
+                    metrics::HEARTBEATS_FAILED.inc();
                     tracing::warn!(
                         error = %e,
                         service_id,
@@ -139,13 +129,11 @@ async fn send_heartbeat(
 
     let block_number = provider.get_block_number().await?;
 
-    // Embedding operators submit minimal metrics (liveness only for now)
-    let metric_pairs: Vec<IOperatorStatusRegistry::MetricPair> = vec![
-        IOperatorStatusRegistry::MetricPair {
-            key: "alive".to_string(),
-            value: 1,
-        },
-    ];
+    let chain_metrics = metrics::on_chain_metrics();
+    let metric_pairs: Vec<IOperatorStatusRegistry::MetricPair> = chain_metrics
+        .into_iter()
+        .map(|(key, value)| IOperatorStatusRegistry::MetricPair { key, value })
+        .collect();
 
     let registry = IOperatorStatusRegistry::new(registry_addr, &provider);
     let call = registry.submitHeartbeat(service_id, blueprint_id, block_number, metric_pairs);

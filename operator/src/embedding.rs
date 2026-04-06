@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::OperatorConfig;
 
 /// Client for communicating with the embedding backend.
-pub struct EmbeddingBackend {
+pub struct EmbeddingClient {
     client: reqwest::Client,
     endpoint: String,
     model: String,
@@ -82,7 +82,7 @@ pub struct RerankDocument {
     pub text: String,
 }
 
-impl EmbeddingBackend {
+impl EmbeddingClient {
     /// Create a new backend client from config.
     pub fn new(config: &OperatorConfig) -> anyhow::Result<Self> {
         let client = reqwest::Client::builder()
@@ -244,8 +244,8 @@ impl EmbeddingBackend {
     }
 }
 
-/// Create a shared EmbeddingBackend from config.
-pub fn create_backend(config: Arc<OperatorConfig>) -> anyhow::Result<Arc<EmbeddingBackend>> {
-    let backend = EmbeddingBackend::new(&config)?;
-    Ok(Arc::new(backend))
+/// Create a shared EmbeddingClient from config.
+pub fn create_client(config: Arc<OperatorConfig>) -> anyhow::Result<Arc<EmbeddingClient>> {
+    let client = EmbeddingClient::new(&config)?;
+    Ok(Arc::new(client))
 }

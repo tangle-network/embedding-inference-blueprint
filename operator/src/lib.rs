@@ -1,8 +1,17 @@
 pub mod config;
 pub mod embedding;
-pub mod health;
 pub mod qos;
 pub mod server;
+
+// Re-export shared infrastructure so downstream crates can `use embedding_inference::*`.
+pub use tangle_inference_core::{
+    detect_gpus, parse_nvidia_smi_output, AppState, AppStateBuilder, BillingClient, CostModel,
+    CostParams, GpuInfo, NonceStore, PerTokenCostModel, RequestGuard, SpendAuthPayload,
+};
+pub use tangle_inference_core::server::{
+    error_response, extract_x402_spend_auth, payment_required, settle_billing, validate_spend_auth,
+};
+pub use tangle_inference_core::{billing, metrics};
 
 use blueprint_sdk::std::sync::{Arc, OnceLock};
 use blueprint_sdk::std::time::Duration;
@@ -18,7 +27,8 @@ use blueprint_sdk::Job;
 use tokio::sync::oneshot;
 
 use crate::config::OperatorConfig;
-use crate::embedding::EmbeddingBackend;
+use crate::embedding::EmbeddingClient;
+use crate::server::EmbeddingBackend;
 
 // --- ABI types for on-chain job encoding ---
 
@@ -26,38 +36,36 @@ sol! {
     #[derive(Debug, serde::Serialize, serde::Deserialize)]
     /// Input payload ABI-encoded in the Tangle job call.
     struct EmbeddingRequest {
-        /// Array of text inputs to embed (ABI-encoded as a single concatenated
-        /// string with newline separators for simplicity; real usage may
-        /// use bytes[] or string[]).
+        /// Array of text inputs to embed.
         string[] inputs;
     }
 
     #[derive(Debug, serde::Serialize, serde::Deserialize)]
     /// Output payload ABI-encoded in the Tangle job result.
     struct EmbeddingResult {
-        /// Number of embeddings produced
+        /// Number of embeddings produced.
         uint32 count;
-        /// Total tokens consumed
+        /// Total tokens consumed.
         uint32 totalTokens;
-        /// Embedding dimensions
+        /// Embedding dimensions.
         uint32 dimensions;
     }
 
     #[derive(Debug, serde::Serialize, serde::Deserialize)]
     /// Input payload for an on-chain rerank job.
     struct RerankRequest {
-        /// Query to rank documents against
+        /// Query to rank documents against.
         string query;
-        /// Documents to rerank
+        /// Documents to rerank.
         string[] documents;
-        /// Return only top N results (0 = all)
+        /// Return only top N results (0 = all).
         uint32 topN;
     }
 
     #[derive(Debug, serde::Serialize, serde::Deserialize)]
     /// Output payload for an on-chain rerank job.
     struct RerankResult {
-        /// Number of results returned
+        /// Number of results returned.
         uint32 count;
     }
 }
@@ -72,21 +80,22 @@ pub const RERANK_JOB: u8 = 1;
 static EMBEDDING_ENDPOINT: OnceLock<EmbeddingEndpoint> = OnceLock::new();
 
 struct EmbeddingEndpoint {
-    backend: Arc<EmbeddingBackend>,
+    client: Arc<EmbeddingClient>,
 }
 
-fn register_embedding_endpoint(backend: Arc<EmbeddingBackend>) -> Result<(), RunnerError> {
-    let endpoint = EmbeddingEndpoint { backend };
+#[allow(clippy::result_large_err)]
+fn register_embedding_endpoint(client: Arc<EmbeddingClient>) -> Result<(), RunnerError> {
+    let endpoint = EmbeddingEndpoint { client };
     let _ = EMBEDDING_ENDPOINT.set(endpoint);
     Ok(())
 }
 
 /// Initialize the embedding endpoint for testing.
 pub fn init_for_testing(base_url: &str, model: &str) {
-    let backend = EmbeddingBackend::connect(base_url.to_string(), model.to_string())
-        .expect("failed to create test backend");
+    let client = EmbeddingClient::connect(base_url.to_string(), model.to_string())
+        .expect("failed to create test embedding client");
     let endpoint = EmbeddingEndpoint {
-        backend: Arc::new(backend),
+        client: Arc::new(client),
     };
     let _ = EMBEDDING_ENDPOINT.set(endpoint);
 }
@@ -112,25 +121,29 @@ pub fn router() -> Router {
 /// Direct embedding call -- same logic as run_embedding but without TangleArg.
 /// Used for testing without the Tangle context.
 pub async fn embed_direct(request: &EmbeddingRequest) -> Result<EmbeddingResult, RunnerError> {
-    let endpoint = EMBEDDING_ENDPOINT.get().ok_or_else(|| {
-        RunnerError::Other("embedding endpoint not registered".into())
-    })?;
+    let endpoint = EMBEDDING_ENDPOINT
+        .get()
+        .ok_or_else(|| RunnerError::Other("embedding endpoint not registered".into()))?;
 
-    let inputs: Vec<String> = request.inputs.iter().cloned().collect();
+    let inputs: Vec<String> = request.inputs.to_vec();
 
     if inputs.is_empty() {
         return Err(RunnerError::Other("empty input list".into()));
     }
 
     let resp = endpoint
-        .backend
+        .client
         .embed(inputs)
         .await
         .map_err(|e| RunnerError::Other(format!("embedding request failed: {e}").into()))?;
 
     let count = resp.data.len() as u32;
     let total_tokens = resp.usage.as_ref().map(|u| u.total_tokens).unwrap_or(0);
-    let dimensions = resp.data.first().map(|d| d.embedding.len() as u32).unwrap_or(0);
+    let dimensions = resp
+        .data
+        .first()
+        .map(|d| d.embedding.len() as u32)
+        .unwrap_or(0);
 
     Ok(EmbeddingResult {
         count,
@@ -139,7 +152,7 @@ pub async fn embed_direct(request: &EmbeddingRequest) -> Result<EmbeddingResult,
     })
 }
 
-// --- Job handler ---
+// --- Job handlers ---
 
 /// Handle an embedding job submitted on-chain.
 #[debug_job]
@@ -158,21 +171,13 @@ pub async fn run_embedding(
         return Err(RunnerError::Other("empty input list".into()));
     }
 
-    let resp = endpoint
-        .backend
-        .embed(inputs)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "embedding request failed");
-            RunnerError::Other(format!("embedding request failed: {e}").into())
-        })?;
+    let resp = endpoint.client.embed(inputs).await.map_err(|e| {
+        tracing::error!(error = %e, "embedding request failed");
+        RunnerError::Other(format!("embedding request failed: {e}").into())
+    })?;
 
     let count = resp.data.len() as u32;
-    let total_tokens = resp
-        .usage
-        .as_ref()
-        .map(|u| u.total_tokens)
-        .unwrap_or(0);
+    let total_tokens = resp.usage.as_ref().map(|u| u.total_tokens).unwrap_or(0);
     let dimensions = resp
         .data
         .first()
@@ -209,11 +214,10 @@ pub async fn run_rerank(
         return Err(RunnerError::Other("empty documents list".into()));
     }
 
-    // Use the rerank model from config or fall back to the embedding model
-    let model = endpoint.backend.model();
+    let model = endpoint.client.model();
 
     let resp = endpoint
-        .backend
+        .client
         .rerank(query, documents, model, top_n)
         .await
         .map_err(|e| {
@@ -243,10 +247,10 @@ impl BackgroundService for EmbeddingServer {
 
         tokio::spawn(async move {
             // 1. Create embedding backend client
-            let backend = match embedding::create_backend(config.clone()) {
-                Ok(b) => b,
+            let client = match embedding::create_client(config.clone()) {
+                Ok(c) => c,
                 Err(e) => {
-                    tracing::error!(error = %e, "failed to create embedding backend");
+                    tracing::error!(error = %e, "failed to create embedding client");
                     let _ = tx.send(Err(RunnerError::Other(e.to_string().into())));
                     return;
                 }
@@ -257,7 +261,7 @@ impl BackgroundService for EmbeddingServer {
                 endpoint = %config.embedding.endpoint,
                 "waiting for embedding backend readiness"
             );
-            if let Err(e) = backend.wait_ready(&config).await {
+            if let Err(e) = client.wait_ready(&config).await {
                 tracing::error!(error = %e, "embedding backend failed to become ready");
                 let _ = tx.send(Err(RunnerError::Other(e.to_string().into())));
                 return;
@@ -265,51 +269,47 @@ impl BackgroundService for EmbeddingServer {
             tracing::info!("embedding backend is ready");
 
             // 3. Register for on-chain job handlers
-            if let Err(e) = register_embedding_endpoint(backend.clone()) {
+            if let Err(e) = register_embedding_endpoint(client.clone()) {
                 tracing::error!(error = %e, "failed to register embedding endpoint");
                 let _ = tx.send(Err(e));
                 return;
             }
 
-            // 4. Build semaphore
-            let max_concurrent = config.server.max_concurrent_requests;
-            let semaphore = Arc::new(if max_concurrent == 0 {
-                tokio::sync::Semaphore::new(tokio::sync::Semaphore::MAX_PERMITS)
-            } else {
-                tokio::sync::Semaphore::new(max_concurrent)
-            });
+            // 4. Build billing client
+            let billing_client = match BillingClient::new(&config.tangle, &config.billing) {
+                Ok(b) => Arc::new(b),
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to create billing client");
+                    let _ = tx.send(Err(RunnerError::Other(e.to_string().into())));
+                    return;
+                }
+            };
 
             // 5. Create shutdown channel
             let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
-            // 6. Build app state and start HTTP server
-            // Derive operator address from key
-            use alloy::signers::local::PrivateKeySigner;
-            use alloy::signers::Signer;
-            let signer: PrivateKeySigner = match config.tangle.operator_key.parse() {
+            // 6. Build HTTP server state via the shared AppStateBuilder
+            let operator_address = billing_client.operator_address();
+            let nonce_store =
+                Arc::new(NonceStore::load(config.billing.nonce_store_path.clone()));
+            let backend = EmbeddingBackend::new(config.clone(), client.clone());
+
+            let state = match AppStateBuilder::new()
+                .billing(billing_client)
+                .nonce_store(nonce_store)
+                .server_config(Arc::new(config.server.clone()))
+                .billing_config(Arc::new(config.billing.clone()))
+                .tangle_config(Arc::new(config.tangle.clone()))
+                .operator_address(operator_address)
+                .backend(backend)
+                .build()
+            {
                 Ok(s) => s,
                 Err(e) => {
-                    tracing::error!(error = %e, "failed to parse operator key");
-                    let _ = tx.send(Err(RunnerError::Other(
-                        format!("invalid operator key: {e}").into(),
-                    )));
+                    tracing::error!(error = %e, "failed to build AppState");
+                    let _ = tx.send(Err(RunnerError::Other(e.to_string().into())));
                     return;
                 }
-            };
-            let operator_address = signer.address();
-
-            let nonce_store = Arc::new(server::NonceStore::load(
-                config.billing.nonce_store_path.clone(),
-            ));
-            let state = server::AppState {
-                config: config.clone(),
-                backend,
-                semaphore,
-                nonce_store,
-                active_per_account: Arc::new(std::sync::RwLock::new(
-                    std::collections::HashMap::new(),
-                )),
-                operator_address,
             };
 
             match server::start(state, shutdown_rx).await {
@@ -324,7 +324,7 @@ impl BackgroundService for EmbeddingServer {
                 }
             }
 
-            // 7. Watchdog loop: monitor embedding backend health
+            // 7. Watchdog loop: monitor backend health
             loop {
                 tokio::select! {
                     _ = tokio::time::sleep(Duration::from_secs(30)) => {}
@@ -335,11 +335,7 @@ impl BackgroundService for EmbeddingServer {
                     }
                 }
 
-                if !EMBEDDING_ENDPOINT
-                    .get()
-                    .map(|e| futures::executor::block_on(e.backend.is_healthy()))
-                    .unwrap_or(false)
-                {
+                if !client.is_healthy().await {
                     tracing::warn!("embedding backend health check failed");
                 }
             }
