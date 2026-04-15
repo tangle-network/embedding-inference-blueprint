@@ -1,0 +1,24 @@
+{
+  "name": "embedding-inference",
+  "description": "Text embedding operator (dense vector generation) via TEI on Tangle",
+  "version": "0.1.0",
+  "manager": {
+    "Evm": "EmbeddingBSM"
+  },
+  "master_revision": "Latest",
+  "jobs": [
+    {
+      "name": "embed",
+      "job_index": 0,
+      "description": "Generate dense vector embeddings from text input",
+      "inputs": [
+        "(string,string)"
+      ],
+      "outputs": [
+        "(bytes,uint32)"
+      ],
+      "required_results": 1,
+      "execution": "local"
+    }
+  ]
+}
