@@ -1,0 +1,54 @@
+{
+  "metadata_uri": "ipfs://",
+  "manager": "0x0000000000000000000000000000000000000000",
+  "metadata": {
+    "name": "embedding-inference",
+    "description": "Text embedding operator (dense vector generation) via TEI on Tangle",
+    "author": "Tangle Network",
+    "license": "MIT OR Apache-2.0",
+    "website": "https://tangle.tools",
+    "code_repository": "https://github.com/tangle-network/embedding-inference-blueprint",
+    "profiling_data": "{\"execution_profile\":{\"gpu\":{\"policy\":\"preferred\",\"min_count\":1,\"min_vram_gb\":4}}}"
+  },
+  "config": {
+    "membership": "Dynamic",
+    "min_operators": 1,
+    "max_operators": 0
+  },
+  "supported_memberships": ["Dynamic", "Fixed"],
+  "jobs": [
+    {
+      "name": "embed",
+      "params": ["(string,string)"],
+      "result": ["(bytes,uint32)"],
+      "verifier": "None"
+    }
+  ],
+  "sources": [
+    {
+      "kind": "Native",
+      "native": {
+        "fetcher": "Github",
+        "entrypoint": "./embedding-operator",
+        "github": {
+          "owner": "tangle-network",
+          "repo": "embedding-inference-blueprint",
+          "tag": "v0.1.0",
+          "binaries": [
+            {
+              "name": "embedding-operator",
+              "arch": "amd64",
+              "os": "linux",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+            }
+          ]
+        }
+      },
+      "testing": {
+        "cargo_package": "embedding-inference",
+        "cargo_bin": "embedding-operator",
+        "base_path": "."
+      }
+    }
+  ]
+}
