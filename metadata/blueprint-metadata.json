@@ -1,0 +1,198 @@
+{
+  "name": "Embedding Inference Blueprint",
+  "description": "Text embedding operator for dense vector generation through TEI or OpenAI-compatible endpoints on Tangle.",
+  "author": "Tangle Network",
+  "category": "AI Inference",
+  "image": null,
+  "website": "https://tangle.tools",
+  "codeRepository": "https://github.com/tangle-network/embedding-inference-blueprint",
+  "docs": "https://github.com/tangle-network/embedding-inference-blueprint#readme",
+  "integrity": null,
+  "blueprintUi": {
+    "displayName": "Embedding Inference",
+    "description": "Provision embedding services, submit vectorization jobs, and monitor token throughput, dimensions, and billing readiness.",
+    "requestedSlug": "embedding-inference",
+    "publisher": {
+      "name": "Tangle Network",
+      "namespace": "tangle",
+      "verified": false
+    },
+    "resources": {
+      "serviceLabel": "Embedding service",
+      "itemLabel": "Embedding job",
+      "itemRoute": "runs"
+    },
+    "surfaces": [
+      "generic-overview",
+      "service-explorer",
+      "actions-panel",
+      "resources",
+      "metrics"
+    ],
+    "theme": {
+      "badgeLabel": "Vector generation",
+      "accentColor": "#0D9488",
+      "secondaryColor": "#042F2E",
+      "icon": "graph"
+    },
+    "overviewCards": [
+      {
+        "id": "rag-foundation",
+        "kind": "callout",
+        "title": "RAG foundation with billing",
+        "description": "TEI or OpenAI-compatible embeddings with per-1K-token billing, x402 SpendAuth, and operator reputation tracking via QoS heartbeats.",
+        "tone": "success"
+      },
+      {
+        "id": "model-ecosystem",
+        "kind": "checklist",
+        "title": "Embedding models",
+        "items": [
+          "BGE (base, large)",
+          "E5 (base, large)",
+          "Jina v3",
+          "GTE / Qwen",
+          "Nomic Embed"
+        ],
+        "tone": "info"
+      },
+      {
+        "id": "dual-paths",
+        "kind": "stat",
+        "title": "Dual request paths",
+        "description": "On-chain jobs for verifiable results + x402 HTTP for fast private embeddings.",
+        "value": "2 modes",
+        "tone": "neutral"
+      }
+    ],
+    "actions": [
+      {
+        "id": "provision-embedding-service",
+        "label": "Provision embedding service",
+        "description": "Deploy an embedding operator with a selected HuggingFace or compatible model. Operator registers on-chain and accepts requests through both job and x402 paths.",
+        "target": "service",
+        "submitLabel": "Provision",
+        "fields": [
+          {
+            "key": "model_id",
+            "label": "Model ID",
+            "input": "text",
+            "required": true,
+            "placeholder": "BAAI/bge-large-en-v1.5"
+          },
+          {
+            "key": "embedding_endpoint",
+            "label": "Endpoint",
+            "input": "text",
+            "required": true,
+            "placeholder": "http://127.0.0.1:8080"
+          },
+          {
+            "key": "price_per_1k_tokens",
+            "label": "Price per 1K tokens (milliTNG)",
+            "input": "number",
+            "required": true,
+            "placeholder": "50"
+          }
+        ]
+      },
+      {
+        "id": "run-embedding-job",
+        "label": "Generate vectors",
+        "description": "Submit a verified on-chain embedding job and receive dense vectors with dimension count and token accounting.",
+        "target": "service",
+        "submitLabel": "Embed",
+        "fields": [
+          {
+            "key": "texts",
+            "label": "Input texts",
+            "input": "textarea",
+            "required": true,
+            "placeholder": "Tangle blueprints coordinate decentralized services."
+          },
+          {
+            "key": "batch_mode",
+            "label": "Processing mode",
+            "input": "select",
+            "required": true,
+            "options": [
+              {
+                "label": "On-chain job",
+                "value": "job"
+              },
+              {
+                "label": "x402 HTTP",
+                "value": "http"
+              }
+            ]
+          },
+          {
+            "key": "normalize",
+            "label": "Normalize vectors",
+            "input": "toggle",
+            "required": false
+          }
+        ]
+      }
+    ],
+    "resourceViews": [
+      {
+        "id": "embedding-jobs",
+        "title": "Embedding jobs",
+        "kind": "table",
+        "target": "resource",
+        "defaultSort": "updated_at:desc",
+        "columns": [
+          {
+            "key": "job_id",
+            "label": "Job",
+            "emphasis": true
+          },
+          {
+            "key": "model",
+            "label": "Model"
+          },
+          {
+            "key": "dimensions",
+            "label": "Dimensions"
+          },
+          {
+            "key": "tokens",
+            "label": "Tokens"
+          }
+        ]
+      }
+    ],
+    "modules": [
+      {
+        "module": "metrics-overview",
+        "slot": "overview",
+        "metricKeys": [
+          "embeddings_generated",
+          "tokens_processed",
+          "heartbeat_confirmations"
+        ]
+      },
+      {
+        "module": "activity-feed",
+        "slot": "sidebar",
+        "eventKinds": [
+          "operator_registered",
+          "embedding_job_submitted",
+          "heartbeat_sent",
+          "heartbeat_failed"
+        ]
+      },
+      {
+        "module": "resource-events",
+        "slot": "resources",
+        "eventKinds": [
+          "model_loaded",
+          "embedding_completed",
+          "vector_dimensions_validated",
+          "billing_settled"
+        ]
+      }
+    ]
+  }
+}
