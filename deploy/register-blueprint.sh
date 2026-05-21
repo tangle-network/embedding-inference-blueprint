@@ -62,13 +62,19 @@ echo ""
 # construction time via ERC1967Proxy's `_data` argument.
 if [ -z "${BSM_ADDRESS:-}" ]; then
     echo "Stage 1a: deploying EmbeddingBSM implementation …"
+    # `forge create --json` interleaves compile progress with JSON on stdout,
+    # so jq parsing breaks intermittently. Grep the human-readable
+    # "Deployed to:" line instead — it's stable across forge versions and
+    # cache states.
     IMPL_ADDRESS=$(forge create \
         --root "$CONTRACTS_DIR" \
         --rpc-url "$RPC_URL" \
         --private-key "$PRIVATE_KEY" \
         --broadcast \
         "$CONTRACTS_DIR/src/EmbeddingBSM.sol:EmbeddingBSM" \
-        --json | jq -r '.deployedTo')
+        --json 2>&1 | grep -oE 'Deployed to: 0x[a-fA-F0-9]{40}' | tail -1 | awk '{print $3}')
+    echo "$IMPL_ADDRESS" | grep -qE '^0x[a-fA-F0-9]{40}$' \
+        || { echo "failed to extract EmbeddingBSM impl address from forge create output"; exit 1; }
     echo "EmbeddingBSM impl deployed at: $IMPL_ADDRESS"
 
     echo "Stage 1b: deploying ERC1967Proxy and invoking initialize(tsUSD) …"
@@ -81,7 +87,9 @@ if [ -z "${BSM_ADDRESS:-}" ]; then
         --broadcast \
         "$CONTRACTS_DIR/dependencies/@openzeppelin-contracts-5.1.0/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy" \
         --constructor-args "$IMPL_ADDRESS" "$INIT_CALLDATA" \
-        --json | jq -r '.deployedTo')
+        --json 2>&1 | grep -oE 'Deployed to: 0x[a-fA-F0-9]{40}' | tail -1 | awk '{print $3}')
+    echo "$BSM_ADDRESS" | grep -qE '^0x[a-fA-F0-9]{40}$' \
+        || { echo "failed to extract ERC1967Proxy address from forge create output"; exit 1; }
     echo "EmbeddingBSM proxy deployed at: $BSM_ADDRESS"
 else
     echo "Stage 1 skipped — reusing existing BSM proxy at $BSM_ADDRESS"
