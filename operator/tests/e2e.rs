@@ -60,6 +60,7 @@ fn test_config(backend_port: u16) -> OperatorConfig {
             max_per_account_requests: 0,
         },
         billing: BillingConfig {
+            payment_rails: tangle_inference_core::PaymentRails::SHIELDED,
             billing_required: false,
             max_spend_per_request: 100_000,
             min_credit_balance: 100,
@@ -69,6 +70,7 @@ fn test_config(backend_port: u16) -> OperatorConfig {
             max_gas_price_gwei: 0,
             nonce_store_path: None,
             payment_token_address: None,
+            direct_replay_store_path: None,
         },
         gpu: GpuConfig {
             expected_gpu_count: 0,
@@ -82,7 +84,11 @@ fn test_config(backend_port: u16) -> OperatorConfig {
 
 async fn start_test_server(
     backend_port: u16,
-) -> (u16, tokio::sync::watch::Sender<bool>, tokio::task::JoinHandle<()>) {
+) -> (
+    u16,
+    tokio::sync::watch::Sender<bool>,
+    tokio::task::JoinHandle<()>,
+) {
     let server_port = free_port();
     let mut config = test_config(backend_port);
     config.server.port = server_port;
