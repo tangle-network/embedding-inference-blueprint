@@ -4,14 +4,14 @@ pub mod qos;
 pub mod server;
 
 // Re-export shared infrastructure so downstream crates can `use embedding_inference::*`.
-pub use tangle_inference_core::{
-    detect_gpus, parse_nvidia_smi_output, AppState, AppStateBuilder, BillingClient, CostModel,
-    CostParams, GpuInfo, NonceStore, PerTokenCostModel, RequestGuard, SpendAuthPayload,
-};
 pub use tangle_inference_core::server::{
     error_response, extract_x402_spend_auth, payment_required, settle_billing, validate_spend_auth,
 };
 pub use tangle_inference_core::{billing, metrics};
+pub use tangle_inference_core::{
+    detect_gpus, parse_nvidia_smi_output, AppState, AppStateBuilder, BillingClient, CostModel,
+    CostParams, GpuInfo, NonceStore, PerTokenCostModel, RequestGuard, SpendAuthPayload,
+};
 
 use blueprint_sdk::std::sync::{Arc, OnceLock};
 use blueprint_sdk::std::time::Duration;
@@ -290,8 +290,7 @@ impl BackgroundService for EmbeddingServer {
 
             // 6. Build HTTP server state via the shared AppStateBuilder
             let operator_address = billing_client.operator_address();
-            let nonce_store =
-                Arc::new(NonceStore::load(config.billing.nonce_store_path.clone()));
+            let nonce_store = Arc::new(NonceStore::load(config.billing.nonce_store_path.clone()));
             let backend = EmbeddingBackend::new(config.clone(), client.clone());
 
             let state = match AppStateBuilder::new()
