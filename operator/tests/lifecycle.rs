@@ -1,8 +1,11 @@
 //! Full lifecycle test -- embedding job through real handler + wiremock backend.
 
-use anyhow::{Result, ensure};
-use wiremock::{MockServer, Mock, ResponseTemplate, matchers::{method, path}};
+use anyhow::{ensure, Result};
 use embedding_inference::EmbeddingRequest;
+use wiremock::{
+    matchers::{method, path},
+    Mock, MockServer, ResponseTemplate,
+};
 
 #[tokio::test]
 async fn test_embed_direct_with_wiremock() -> Result<()> {
@@ -36,19 +39,28 @@ async fn test_embed_direct_with_wiremock() -> Result<()> {
     embedding_inference::init_for_testing(&mock_server.uri(), "bge-large-en-v1.5");
 
     let request = EmbeddingRequest {
-        inputs: vec![
-            "Hello world".to_string(),
-            "Goodbye world".to_string(),
-        ],
+        inputs: vec!["Hello world".to_string(), "Goodbye world".to_string()],
     };
 
     let result = embedding_inference::embed_direct(&request).await;
 
     match result {
         Ok(embed_result) => {
-            ensure!(embed_result.count == 2, "expected 2 embeddings, got {}", embed_result.count);
-            ensure!(embed_result.totalTokens == 12, "expected 12 tokens, got {}", embed_result.totalTokens);
-            ensure!(embed_result.dimensions == 8, "expected 8 dimensions, got {}", embed_result.dimensions);
+            ensure!(
+                embed_result.count == 2,
+                "expected 2 embeddings, got {}",
+                embed_result.count
+            );
+            ensure!(
+                embed_result.totalTokens == 12,
+                "expected 12 tokens, got {}",
+                embed_result.totalTokens
+            );
+            ensure!(
+                embed_result.dimensions == 8,
+                "expected 8 dimensions, got {}",
+                embed_result.dimensions
+            );
         }
         Err(e) => panic!("Embedding failed: {e}"),
     }

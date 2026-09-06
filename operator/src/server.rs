@@ -260,14 +260,13 @@ async fn embeddings(
     }
 
     // Billing gate: extract x402 -> validate -> authorize on-chain
-    let estimated_tokens = (input_count as u32)
-        .saturating_mul(backend.config.embedding.max_sequence_length);
+    let estimated_tokens =
+        (input_count as u32).saturating_mul(backend.config.embedding.max_sequence_length);
     let estimated = backend.calculate_cost(estimated_tokens);
-    let (spend_auth, preauth_amount) =
-        match billing_gate(&state, &headers, None, estimated).await {
-            Ok(v) => v,
-            Err(resp) => return resp,
-        };
+    let (spend_auth, preauth_amount) = match billing_gate(&state, &headers, None, estimated).await {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
 
     // Check backend health before serving (only when billing)
     if spend_auth.is_some() && !backend.client.is_healthy().await {
@@ -384,11 +383,10 @@ async fn rerank(
     let estimated_tokens = ((req.documents.len() + 1) as u32)
         .saturating_mul(backend.config.embedding.max_sequence_length);
     let estimated = backend.calculate_cost(estimated_tokens);
-    let (spend_auth, preauth_amount) =
-        match billing_gate(&state, &headers, None, estimated).await {
-            Ok(v) => v,
-            Err(resp) => return resp,
-        };
+    let (spend_auth, preauth_amount) = match billing_gate(&state, &headers, None, estimated).await {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
 
     if spend_auth.is_some() && !backend.client.is_healthy().await {
         return error_response(
@@ -402,11 +400,7 @@ async fn rerank(
     // Estimate tokens for cost settlement
     let documents = req.documents.clone();
     let query_len_est = (req.query.len() as u32) / 4 + 1;
-    let documents_len_est: u32 = req
-        .documents
-        .iter()
-        .map(|d| (d.len() as u32) / 4 + 1)
-        .sum();
+    let documents_len_est: u32 = req.documents.iter().map(|d| (d.len() as u32) / 4 + 1).sum();
     let total_tokens_est = query_len_est.saturating_add(documents_len_est);
 
     match backend
