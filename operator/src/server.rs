@@ -291,7 +291,8 @@ async fn embeddings(
 
             if let (Some(ref sa), Some(preauth)) = (&spend_auth, preauth_amount) {
                 let actual_cost = backend.calculate_cost(prompt_tokens);
-                if let Err(e) = settle_billing(&state.billing, sa, preauth, actual_cost).await {
+                if let Err(e) = settle_billing(&state.billing, sa, preauth, Some(actual_cost)).await
+                {
                     tracing::error!(error = %e, "on-chain settlement failed");
                 }
             }
@@ -414,7 +415,8 @@ async fn rerank(
 
             if let (Some(ref sa), Some(preauth)) = (&spend_auth, preauth_amount) {
                 let actual_cost = backend.calculate_cost(total_tokens_est);
-                if let Err(e) = settle_billing(&state.billing, sa, preauth, actual_cost).await {
+                if let Err(e) = settle_billing(&state.billing, sa, preauth, Some(actual_cost)).await
+                {
                     tracing::error!(error = %e, "on-chain settlement failed");
                 }
             }
