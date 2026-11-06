@@ -1,6 +1,6 @@
 pub mod config;
 pub mod embedding;
-pub mod qos;
+pub use tangle_inference_core::qos;
 pub mod server;
 
 // Re-export shared infrastructure so downstream crates can `use embedding_inference::*`.

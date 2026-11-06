@@ -3,7 +3,7 @@
 #
 # Single-shot flow: deploys EmbeddingBSM (impl + UUPS proxy + initialize)
 # AND calls Tangle.createBlueprint in the same broadcast via
-# `contracts/script/RegisterBlueprint.s.sol`. This replaces the prior
+# `contracts/script/Deploy.s.sol`. This replaces the prior
 # two-stage `forge create` + `cargo tangle blueprint deploy` flow.
 #
 # Prerequisites:
@@ -42,6 +42,7 @@ set -euo pipefail
 
 : "${RPC_URL:?Set RPC_URL}"
 : "${PRIVATE_KEY:?Set PRIVATE_KEY}"
+TANGLE_CORE="${TANGLE_CORE:-0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9}"
 
 MODEL="${MODEL:-BAAI/bge-large-en-v1.5}"
 DIMENSIONS="${DIMENSIONS:-1024}"
@@ -53,7 +54,6 @@ ENDPOINT="${ENDPOINT:-https://your-operator.example.com}"
 
 echo "=== Embedding-Inference Blueprint Registration ==="
 echo "Network:     $(cast chain-id --rpc-url "$RPC_URL")"
-echo "Deployer:    $(cast wallet address --private-key "$PRIVATE_KEY")"
 echo "Tangle Core: ${TANGLE_CORE:-<default from RegisterBlueprint.s.sol>}"
 echo "tsUSD:       ${TSUSD_ADDRESS:-<default USDC sepolia>}"
 echo "Model:       $MODEL ($DIMENSIONS-dim, max_seq=$MAX_SEQ_LEN)"
@@ -61,14 +61,17 @@ echo "GPUs:        $GPU_COUNT x $GPU_MODEL ($TOTAL_VRAM MiB)"
 echo "Endpoint:    $ENDPOINT"
 echo ""
 
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CORE_DIR="$(cargo metadata --manifest-path "$ROOT_DIR/Cargo.toml" --format-version 1 --locked | python3 -c 'import json,sys,pathlib; print(pathlib.Path(next(p["manifest_path"] for p in json.load(sys.stdin)["packages"] if p["name"] == "tangle-inference-core")).parent)')"
 cd "$(dirname "$0")/../contracts"
 
 # Deploy BSM (impl + proxy + initialize) AND register the blueprint in one
 # forge-script broadcast.
 DEPLOY_OUTPUT=$(PRIVATE_KEY="$PRIVATE_KEY" \
     TANGLE_CORE="${TANGLE_CORE:-}" \
-    TSUSD_ADDRESS="${TSUSD_ADDRESS:-}" \
-    forge script script/RegisterBlueprint.s.sol \
+    TSUSD_ADDRESS="${TSUSD_ADDRESS:-0x036CbD53842c5426634e7929541eC2318f3dCF7e}" \
+    forge script script/Deploy.s.sol:Deploy \
+        --remappings "tangle-inference-core/=$CORE_DIR/contracts/" \
         --rpc-url "$RPC_URL" \
         --broadcast --slow)
 
