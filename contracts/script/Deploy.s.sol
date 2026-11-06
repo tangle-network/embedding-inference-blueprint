@@ -10,7 +10,10 @@ contract Deploy is RegisterBlueprint {
         EmbeddingBSM impl = new EmbeddingBSM();
         console2.log("DEPLOY_EMBEDDING_BSM_IMPL=%s", vm.toString(address(impl)));
         return address(
-            new ERC1967Proxy(address(impl), abi.encodeCall(EmbeddingBSM.initialize, (vm.envAddress("TSUSD_ADDRESS"))))
+            new ERC1967Proxy(
+                address(impl),
+                abi.encodeCall(EmbeddingBSM.initialize, (vm.envAddress("TSUSD_ADDRESS"), vm.envAddress("TANGLE_CORE")))
+            )
         );
     }
 

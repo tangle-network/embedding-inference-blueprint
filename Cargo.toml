@@ -24,8 +24,3 @@ thiserror = "2"
 hex = "0.4"
 k256 = { version = "0.13", features = ["ecdsa"] }
 prometheus = { version = "0.13", default-features = false }
-
-# Point blueprint-sdk deps at local checkout (has pre-yank core2 resolved)
-# core2 was entirely yanked from crates.io
-[patch.crates-io]
-core2 = { git = "https://github.com/tangle-network/core2", branch = "master" }
