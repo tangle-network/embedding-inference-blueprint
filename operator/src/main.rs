@@ -27,7 +27,7 @@ fn registration_payload(config: &OperatorConfig) -> Vec<u8> {
 tangle_inference_core::run_operator!(
     OperatorConfig::load(None),
     registration_payload,
-    embedding_inference::router(),
+    |_| embedding_inference::router(),
     |config| EmbeddingServer { config },
     qos
 );

@@ -21,6 +21,7 @@ contract EmbeddingBSMTest is Test {
 
         EmbeddingBSM impl_ = new EmbeddingBSM();
         bytes memory initData = abi.encodeCall(EmbeddingBSM.initialize, (tsUSD, tangleCore));
+        vm.prank(owner);
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl_), initData);
         bsm = EmbeddingBSM(payable(address(proxy)));
 
