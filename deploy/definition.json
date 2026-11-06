@@ -8,47 +8,56 @@
     "license": "MIT OR Apache-2.0",
     "website": "https://tangle.tools",
     "code_repository": "https://github.com/tangle-network/embedding-inference-blueprint",
-    "profiling_data": "{\"execution_profile\":{\"gpu\":{\"policy\":\"preferred\",\"min_count\":1,\"min_vram_gb\":4}}}"
+    "profiling_data": "{\"execution_profile\":{\"gpu\":{\"policy\":\"preferred\",\"min_count\":1,\"min_vram_gb\":4}}}",
+    "category": "AI/Inference"
   },
   "config": {
-    "membership": "Dynamic",
+    "membership": "dynamic",
     "min_operators": 1,
-    "max_operators": 0
+    "max_operators": 0,
+    "pricing": "event_driven"
   },
-  "supported_memberships": ["Dynamic", "Fixed"],
+  "supported_memberships": [
+    "dynamic",
+    "fixed"
+  ],
   "jobs": [
     {
-      "name": "embed",
-      "params": ["(string,string)"],
-      "result": ["(bytes,uint32)"],
-      "verifier": "None"
+      "name": "embed"
     }
   ],
   "sources": [
     {
-      "kind": "Native",
-      "native": {
-        "fetcher": "Github",
-        "entrypoint": "./embedding-operator",
-        "github": {
-          "owner": "tangle-network",
-          "repo": "embedding-inference-blueprint",
-          "tag": "v0.1.0",
-          "binaries": [
-            {
-              "name": "embedding-operator",
-              "arch": "amd64",
-              "os": "linux",
-              "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
-            }
-          ]
-        }
-      },
+      "kind": "native",
       "testing": {
         "cargo_package": "embedding-inference",
         "cargo_bin": "embedding-operator",
         "base_path": "."
-      }
+      },
+      "fetcher": "github",
+      "entrypoint": "./embedding-operator",
+      "github": {
+        "owner": "tangle-network",
+        "repo": "embedding-inference-blueprint",
+        "tag": "v0.1.0",
+        "binaries": [
+          {
+            "name": "embedding-operator",
+            "arch": "amd64",
+            "os": "linux",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "binaries": [
+        {
+          "name": "embedding-operator",
+          "arch": "amd64",
+          "os": "linux",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ]
     }
-  ]
+  ],
+  "metadata_file": "definition.json"
 }

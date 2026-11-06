@@ -4,13 +4,13 @@ pragma solidity ^0.8.26;
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import { InferenceBSMBase } from "tangle-inference-core/InferenceBSMBase.sol";
+import { BlueprintServiceManagerBase } from "tnt-core/BlueprintServiceManagerBase.sol";
 
 /// @title EmbeddingBSM
 /// @notice Blueprint Service Manager for embedding inference services.
 /// @dev Operators register with GPU capabilities and embedding model metadata.
 ///      Pricing is per-1K tokens. Only accepts tsUSD (ShieldedCredits wrapped token).
-contract EmbeddingBSM is Initializable, UUPSUpgradeable, InferenceBSMBase {
+contract EmbeddingBSM is Initializable, UUPSUpgradeable, BlueprintServiceManagerBase {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -101,7 +101,7 @@ contract EmbeddingBSM is Initializable, UUPSUpgradeable, InferenceBSMBase {
     /// @notice Initialize the contract (called once via proxy)
     /// @param _tsUSD The wrapped stablecoin accepted for payment
     function initialize(address _tsUSD, address registry) external initializer {
-        _bindRegistrationCore(registry);
+        _initializeBlueprintManager(registry, msg.sender);
         __UUPSUpgradeable_init();
         tsUSD = _tsUSD;
     }
