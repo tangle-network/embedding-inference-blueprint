@@ -50,6 +50,7 @@ fn test_config(backend_port: u16) -> OperatorConfig {
             price_per_1k_tokens: 1000,
         },
         server: ServerConfig {
+            endpoint_key: None,
             host: "127.0.0.1".into(),
             port: 0,
             max_concurrent_requests: 128,

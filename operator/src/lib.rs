@@ -1,6 +1,6 @@
 pub mod config;
 pub mod embedding;
-pub mod qos;
+pub use tangle_inference_core::qos;
 pub mod server;
 
 // Re-export shared infrastructure so downstream crates can `use embedding_inference::*`.
@@ -158,22 +158,20 @@ pub async fn embed_direct(request: &EmbeddingRequest) -> Result<EmbeddingResult,
 #[debug_job]
 pub async fn run_embedding(
     TangleArg(request): TangleArg<EmbeddingRequest>,
-) -> Result<TangleResult<EmbeddingResult>, RunnerError> {
+) -> anyhow::Result<TangleResult<EmbeddingResult>> {
     let endpoint = EMBEDDING_ENDPOINT.get().ok_or_else(|| {
-        RunnerError::Other(
-            "embedding endpoint not registered -- EmbeddingServer not started".into(),
-        )
+        anyhow::anyhow!("embedding endpoint not registered -- EmbeddingServer not started",)
     })?;
 
     let inputs: Vec<String> = request.inputs.into_iter().collect();
 
     if inputs.is_empty() {
-        return Err(RunnerError::Other("empty input list".into()));
+        return Err(anyhow::anyhow!("empty input list"));
     }
 
     let resp = endpoint.client.embed(inputs).await.map_err(|e| {
         tracing::error!(error = %e, "embedding request failed");
-        RunnerError::Other(format!("embedding request failed: {e}").into())
+        anyhow::anyhow!("embedding request failed: {e}")
     })?;
 
     let count = resp.data.len() as u32;
@@ -195,11 +193,9 @@ pub async fn run_embedding(
 #[debug_job]
 pub async fn run_rerank(
     TangleArg(request): TangleArg<RerankRequest>,
-) -> Result<TangleResult<RerankResult>, RunnerError> {
+) -> anyhow::Result<TangleResult<RerankResult>> {
     let endpoint = EMBEDDING_ENDPOINT.get().ok_or_else(|| {
-        RunnerError::Other(
-            "embedding endpoint not registered -- EmbeddingServer not started".into(),
-        )
+        anyhow::anyhow!("embedding endpoint not registered -- EmbeddingServer not started",)
     })?;
 
     let documents: Vec<String> = request.documents.into_iter().collect();
@@ -211,7 +207,7 @@ pub async fn run_rerank(
     };
 
     if documents.is_empty() {
-        return Err(RunnerError::Other("empty documents list".into()));
+        return Err(anyhow::anyhow!("empty documents list"));
     }
 
     let model = endpoint.client.model();
@@ -222,7 +218,7 @@ pub async fn run_rerank(
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "rerank request failed");
-            RunnerError::Other(format!("rerank request failed: {e}").into())
+            anyhow::anyhow!("rerank request failed: {e}")
         })?;
 
     let count = resp.results.len() as u32;

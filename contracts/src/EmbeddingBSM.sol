@@ -100,7 +100,8 @@ contract EmbeddingBSM is Initializable, UUPSUpgradeable, BlueprintServiceManager
 
     /// @notice Initialize the contract (called once via proxy)
     /// @param _tsUSD The wrapped stablecoin accepted for payment
-    function initialize(address _tsUSD) external initializer {
+    function initialize(address _tsUSD, address registry) external initializer {
+        _initializeBlueprintManager(registry, msg.sender);
         __UUPSUpgradeable_init();
         tsUSD = _tsUSD;
     }
@@ -255,7 +256,7 @@ contract EmbeddingBSM is Initializable, UUPSUpgradeable, BlueprintServiceManager
         uint8,
         uint64 jobCallId,
         address operator,
-        bytes calldata,
+        bytes32,
         bytes calldata outputs
     ) external payable override onlyFromTangle {
         if (!operatorCaps[operator].active) revert OperatorNotRegistered(operator);

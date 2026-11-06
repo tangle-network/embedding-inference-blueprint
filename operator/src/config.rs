@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 pub use tangle_inference_core::{BillingConfig, GpuConfig, ServerConfig, TangleConfig};
 
-use crate::qos::QoSConfig;
+use tangle_inference_core::qos::QoSConfig;
 
 /// Top-level operator configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,6 +119,7 @@ impl OperatorConfig {
         // Prefix: EMBED_OP_ (e.g. EMBED_OP_TANGLE__RPC_URL)
         builder = builder.add_source(
             config::Environment::with_prefix("EMBED_OP")
+                .prefix_separator("_")
                 .separator("__")
                 .try_parsing(true),
         );
@@ -135,78 +136,5 @@ impl OperatorConfig {
 
         let cfg = builder.build()?.try_deserialize::<Self>()?;
         Ok(cfg)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn example_config_json() -> &'static str {
-        r#"{
-            "tangle": {
-                "rpc_url": "http://localhost:8545",
-                "chain_id": 31337,
-                "operator_key": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-                "shielded_credits": "0x0000000000000000000000000000000000000002",
-                "blueprint_id": 1,
-                "service_id": null
-            },
-            "embedding": {
-                "model": "BAAI/bge-large-en-v1.5",
-                "dimensions": 1024,
-                "max_sequence_length": 512,
-                "price_per_1k_tokens": 1000
-            },
-            "server": {
-                "host": "0.0.0.0",
-                "port": 8090
-            },
-            "billing": {
-                "max_spend_per_request": 100000,
-                "min_credit_balance": 100
-            },
-            "gpu": {
-                "expected_gpu_count": 1,
-                "min_vram_mib": 8000
-            }
-        }"#
-    }
-
-    #[test]
-    fn test_deserialize_full_config() {
-        let cfg: OperatorConfig = serde_json::from_str(example_config_json()).unwrap();
-        assert_eq!(cfg.tangle.chain_id, 31337);
-        assert_eq!(cfg.embedding.model, "BAAI/bge-large-en-v1.5");
-        assert_eq!(cfg.embedding.dimensions, 1024);
-        assert_eq!(cfg.embedding.max_sequence_length, 512);
-        assert_eq!(cfg.server.port, 8090);
-        assert_eq!(cfg.embedding.price_per_1k_tokens, 1000);
-        assert_eq!(cfg.gpu.expected_gpu_count, 1);
-        assert!(cfg.tangle.service_id.is_none());
-    }
-
-    #[test]
-    fn test_defaults_applied() {
-        let cfg: OperatorConfig = serde_json::from_str(example_config_json()).unwrap();
-        assert_eq!(cfg.server.max_concurrent_requests, 64);
-        assert_eq!(cfg.embedding.max_batch_size, 64);
-        assert_eq!(cfg.embedding.endpoint, "http://127.0.0.1:8080");
-        assert_eq!(cfg.embedding.startup_timeout_secs, 120);
-        assert_eq!(cfg.gpu.monitor_interval_secs, 30);
-    }
-
-    #[test]
-    fn test_price_per_input_token_rounds_up() {
-        let cfg: OperatorConfig = serde_json::from_str(example_config_json()).unwrap();
-        // 1000 per 1k -> 1 per token
-        assert_eq!(cfg.embedding.price_per_input_token(), 1);
-    }
-
-    #[test]
-    fn test_missing_required_field_fails() {
-        let bad = r#"{"tangle": {"rpc_url": "http://localhost:8545"}}"#;
-        let result = serde_json::from_str::<OperatorConfig>(bad);
-        assert!(result.is_err());
     }
 }

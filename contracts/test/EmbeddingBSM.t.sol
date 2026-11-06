@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import { Test } from "forge-std/Test.sol";
-import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import { EmbeddingBSM } from "../src/EmbeddingBSM.sol";
-import { BlueprintServiceManagerBase } from "tnt-core/BlueprintServiceManagerBase.sol";
+import {Test} from "forge-std/Test.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {EmbeddingBSM} from "../src/EmbeddingBSM.sol";
+import {BlueprintServiceManagerBase} from "tnt-core/BlueprintServiceManagerBase.sol";
 
 contract EmbeddingBSMTest is Test {
     EmbeddingBSM public bsm;
@@ -20,19 +20,22 @@ contract EmbeddingBSMTest is Test {
         tsUSD = address(0xAAAA);
 
         EmbeddingBSM impl_ = new EmbeddingBSM();
-        bytes memory initData = abi.encodeCall(EmbeddingBSM.initialize, (tsUSD));
+        bytes memory initData = abi.encodeCall(EmbeddingBSM.initialize, (tsUSD, tangleCore));
+        vm.prank(owner);
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl_), initData);
         bsm = EmbeddingBSM(payable(address(proxy)));
+
+        vm.prank(tangleCore);
 
         bsm.onBlueprintCreated(1, owner, tangleCore);
 
         vm.prank(owner);
         bsm.configureModel(
             "BAAI/bge-large-en-v1.5",
-            uint32(1024),   // dimensions
-            uint32(512),    // max sequence length
-            uint64(10),     // price per 1K tokens
-            uint32(8_000)   // min VRAM
+            uint32(1024), // dimensions
+            uint32(512), // max sequence length
+            uint64(10), // price per 1K tokens
+            uint32(8_000) // min VRAM
         );
     }
 
@@ -47,6 +50,7 @@ contract EmbeddingBSMTest is Test {
 
     function test_cannotReinitialize() public {
         vm.expectRevert(BlueprintServiceManagerBase.AlreadyInitialized.selector);
+        vm.prank(tangleCore);
         bsm.onBlueprintCreated(2, owner, tangleCore);
     }
 
@@ -90,7 +94,7 @@ contract EmbeddingBSMTest is Test {
     function test_registerOperator_dimensionsMismatch() public {
         bytes memory regData = abi.encode(
             "BAAI/bge-large-en-v1.5",
-            uint32(768),   // wrong dimensions (should be 1024)
+            uint32(768), // wrong dimensions (should be 1024)
             uint32(512),
             uint32(2),
             uint32(16_000),
@@ -99,9 +103,7 @@ contract EmbeddingBSMTest is Test {
         );
 
         vm.prank(tangleCore);
-        vm.expectRevert(
-            abi.encodeWithSelector(EmbeddingBSM.InvalidEmbeddingDimensions.selector, 1024, 768)
-        );
+        vm.expectRevert(abi.encodeWithSelector(EmbeddingBSM.InvalidEmbeddingDimensions.selector, 1024, 768));
         bsm.onRegister(operator1, regData);
     }
 
@@ -117,9 +119,7 @@ contract EmbeddingBSMTest is Test {
         );
 
         vm.prank(tangleCore);
-        vm.expectRevert(
-            abi.encodeWithSelector(EmbeddingBSM.ModelNotSupported.selector, "nonexistent-model")
-        );
+        vm.expectRevert(abi.encodeWithSelector(EmbeddingBSM.ModelNotSupported.selector, "nonexistent-model"));
         bsm.onRegister(operator1, regData);
     }
 
@@ -135,9 +135,7 @@ contract EmbeddingBSMTest is Test {
         );
 
         vm.prank(tangleCore);
-        vm.expectRevert(
-            abi.encodeWithSelector(EmbeddingBSM.InsufficientGpuCapability.selector, 8_000, 4_000)
-        );
+        vm.expectRevert(abi.encodeWithSelector(EmbeddingBSM.InsufficientGpuCapability.selector, 8_000, 4_000));
         bsm.onRegister(operator1, regData);
     }
 
@@ -183,9 +181,7 @@ contract EmbeddingBSMTest is Test {
     }
 
     function test_getOperatorPricing_unregistered() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(EmbeddingBSM.OperatorNotRegistered.selector, operator1)
-        );
+        vm.expectRevert(abi.encodeWithSelector(EmbeddingBSM.OperatorNotRegistered.selector, operator1));
         bsm.getOperatorPricing(operator1);
     }
 
