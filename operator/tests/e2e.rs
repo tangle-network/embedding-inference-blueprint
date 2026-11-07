@@ -92,46 +92,63 @@ async fn start_test_server(
     tokio::sync::watch::Sender<bool>,
     tokio::task::JoinHandle<()>,
 ) {
-    let server_port = free_port();
-    let mut config = test_config(backend_port);
-    config.server.port = server_port;
-    let config = Arc::new(config);
+    launch(backend_port, false).await
+}
 
-    let client = Arc::new(
-        EmbeddingClient::connect(
-            format!("http://127.0.0.1:{backend_port}"),
-            "test-model".into(),
-        )
-        .unwrap(),
-    );
+async fn start_paid_server(
+    backend_port: u16,
+) -> (
+    u16,
+    tokio::sync::watch::Sender<bool>,
+    tokio::task::JoinHandle<()>,
+) {
+    launch(backend_port, true).await
+}
 
-    // Build a BillingClient even though billing is disabled; tests exercise the
-    // non-billed path but AppStateBuilder requires one.
-    let billing = Arc::new(
-        BillingClient::new(&config.tangle, &config.billing)
-            .expect("failed to build test billing client"),
-    );
-    let operator_address = billing.operator_address();
-    let nonce_store = Arc::new(NonceStore::load(None));
-    let backend = EmbeddingBackend::new(config.clone(), client);
-
-    let state = AppStateBuilder::new()
-        .billing(billing)
-        .nonce_store(nonce_store)
-        .server_config(Arc::new(config.server.clone()))
-        .billing_config(Arc::new(config.billing.clone()))
-        .tangle_config(Arc::new(config.tangle.clone()))
-        .operator_address(operator_address)
-        .backend(backend)
-        .build()
-        .expect("build AppState");
-
+async fn launch(
+    backend_port: u16,
+    billing_required: bool,
+) -> (
+    u16,
+    tokio::sync::watch::Sender<bool>,
+    tokio::task::JoinHandle<()>,
+) {
+    // free_port releases its port before the server binds, so a parallel test can take it.
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    let handle = embedding_inference::server::start(state, shutdown_rx)
-        .await
-        .unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    (server_port, shutdown_tx, handle)
+    for _ in 0..5 {
+        let mut config = test_config(backend_port);
+        config.billing.billing_required = billing_required;
+        config.server.port = free_port();
+        let server_port = config.server.port;
+        let config = Arc::new(config);
+        let client = Arc::new(
+            EmbeddingClient::connect(
+                format!("http://127.0.0.1:{backend_port}"),
+                "test-model".into(),
+            )
+            .unwrap(),
+        );
+        let billing = Arc::new(
+            BillingClient::new(&config.tangle, &config.billing)
+                .expect("failed to build test billing client"),
+        );
+        let operator_address = billing.operator_address();
+        let state = AppStateBuilder::new()
+            .billing(billing)
+            .nonce_store(Arc::new(NonceStore::load(None)))
+            .server_config(Arc::new(config.server.clone()))
+            .billing_config(Arc::new(config.billing.clone()))
+            .tangle_config(Arc::new(config.tangle.clone()))
+            .operator_address(operator_address)
+            .backend(EmbeddingBackend::new(config.clone(), client))
+            .build()
+            .expect("build AppState");
+        if let Ok(handle) = embedding_inference::server::start(state, shutdown_rx.clone()).await {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            return (server_port, shutdown_tx, handle);
+        }
+    }
+    panic!("test server found no free port in 5 attempts");
 }
 
 // -- Tests --
@@ -351,35 +368,7 @@ async fn test_embeddings_requires_payment_when_billing_enabled() {
         .mount(&mock)
         .await;
 
-    // Rebuild server with billing_required = true
-    let server_port = free_port();
-    let mut config = test_config(mock.address().port());
-    config.server.port = server_port;
-    config.billing.billing_required = true;
-    let config = Arc::new(config);
-
-    let client_ = Arc::new(
-        EmbeddingClient::connect(
-            format!("http://127.0.0.1:{}", mock.address().port()),
-            "test-model".into(),
-        )
-        .unwrap(),
-    );
-    let billing = Arc::new(BillingClient::new(&config.tangle, &config.billing).unwrap());
-    let operator_address = billing.operator_address();
-    let state = AppStateBuilder::new()
-        .billing(billing)
-        .nonce_store(Arc::new(NonceStore::load(None)))
-        .server_config(Arc::new(config.server.clone()))
-        .billing_config(Arc::new(config.billing.clone()))
-        .tangle_config(Arc::new(config.tangle.clone()))
-        .operator_address(operator_address)
-        .backend(EmbeddingBackend::new(config.clone(), client_))
-        .build()
-        .unwrap();
-    let (_tx, rx) = tokio::sync::watch::channel(false);
-    let _h = embedding_inference::server::start(state, rx).await.unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let (server_port, _tx, _h) = start_paid_server(mock.address().port()).await;
 
     let http = reqwest::Client::new();
     let resp = http
