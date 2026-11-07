@@ -67,8 +67,8 @@ EMBEDDING_ENDPOINT=http://localhost:8080 cargo run --release
 
 ## Register a blueprint
 
-Deploy the manager with [Deploy.s.sol](contracts/script/Deploy.s.sol), `TANGLE_CORE` and `TSUSD_ADDRESS`
-and a Foundry keystore. Set its returned manager address in
+Deploy and configure the manager with [Deploy.s.sol](contracts/script/Deploy.s.sol), `TANGLE_CORE`, `TSUSD_ADDRESS`,
+`MODEL_CONFIG` (default [config.example.json](deploy/config.example.json)) and a Foundry keystore. Set its `DEPLOY_MANAGER` in
 [definition.json](deploy/definition.json), then follow the
 [cargo-tangle deployment guide](https://github.com/tangle-network/blueprint#deploying-to-testnetmainnet)
 using the same wallet address in the SDK keystore. Use verified native artifact

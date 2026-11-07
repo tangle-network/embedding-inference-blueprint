@@ -1,0 +1,4 @@
+{
+  "embedding": { "model": "BAAI/bge-large-en-v1.5", "dimensions": 1024, "max_sequence_length": 512, "price_per_1k_tokens": 10 },
+  "gpu": { "min_vram_mib": 4096 }
+}
