@@ -25,8 +25,8 @@ use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 
 use tangle_inference_core::server::{
-    acquire_permit, billing_gate, error_response, gpu_health_handler, metrics_handler,
-    settle_billing,
+    acquire_permit, authorize_request, error_response, gpu_health_handler, metrics_handler,
+    payment_required, resolve_payment_proof, settle_request, AuthorizedPayment,
 };
 use tangle_inference_core::{
     detect_gpus, AppState, CostModel, CostParams, PerTokenCostModel, RequestGuard,
@@ -216,6 +216,30 @@ fn default_encoding_format() -> String {
 
 // --- Handlers ---
 
+/// Authorize the request's payment; `None` serves it unpaid when billing is optional.
+async fn authorize(
+    state: &AppState,
+    headers: &HeaderMap,
+    estimated: u64,
+) -> Result<Option<AuthorizedPayment>, Response> {
+    let Some(proof) = resolve_payment_proof(headers, None, None) else {
+        let b = &state.billing_config;
+        if b.billing_required {
+            let amount = estimated.max(b.min_charge_amount);
+            return Err(payment_required(
+                b,
+                &state.tangle_config,
+                state.operator_address,
+                amount,
+            ));
+        }
+        return Ok(None);
+    };
+    let healthy = backend_from(state).client.is_healthy();
+    let authorized = authorize_request(state, proof, estimated, healthy).await?;
+    Ok(Some(authorized))
+}
+
 fn backend_from(state: &AppState) -> &EmbeddingBackend {
     state
         .backend::<EmbeddingBackend>()
@@ -263,20 +287,10 @@ async fn embeddings(
     let estimated_tokens =
         (input_count as u32).saturating_mul(backend.config.embedding.max_sequence_length);
     let estimated = backend.calculate_cost(estimated_tokens);
-    let (spend_auth, preauth_amount) = match billing_gate(&state, &headers, None, estimated).await {
-        Ok(v) => v,
+    let authorized = match authorize(&state, &headers, estimated).await {
+        Ok(a) => a,
         Err(resp) => return resp,
     };
-
-    // Check backend health before serving (only when billing)
-    if spend_auth.is_some() && !backend.client.is_healthy().await {
-        return error_response(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "embedding backend is unavailable -- billing not initiated".to_string(),
-            "upstream_error",
-            "backend_unhealthy",
-        );
-    }
 
     // Forward to embedding backend
     let inputs = req.input.into_vec();
@@ -289,12 +303,9 @@ async fn embeddings(
             metrics_guard.set_tokens(prompt_tokens, 0);
             metrics_guard.set_success();
 
-            if let (Some(ref sa), Some(preauth)) = (&spend_auth, preauth_amount) {
+            if let Some(auth) = &authorized {
                 let actual_cost = backend.calculate_cost(prompt_tokens);
-                if let Err(e) = settle_billing(&state.billing, sa, preauth, Some(actual_cost)).await
-                {
-                    tracing::error!(error = %e, "on-chain settlement failed");
-                }
+                settle_request(&state, auth, Some(actual_cost)).await;
             }
 
             let api_response = EmbeddingApiResponse {
@@ -384,19 +395,10 @@ async fn rerank(
     let estimated_tokens = ((req.documents.len() + 1) as u32)
         .saturating_mul(backend.config.embedding.max_sequence_length);
     let estimated = backend.calculate_cost(estimated_tokens);
-    let (spend_auth, preauth_amount) = match billing_gate(&state, &headers, None, estimated).await {
-        Ok(v) => v,
+    let authorized = match authorize(&state, &headers, estimated).await {
+        Ok(a) => a,
         Err(resp) => return resp,
     };
-
-    if spend_auth.is_some() && !backend.client.is_healthy().await {
-        return error_response(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "embedding backend is unavailable -- billing not initiated".to_string(),
-            "upstream_error",
-            "backend_unhealthy",
-        );
-    }
 
     // Estimate tokens for cost settlement
     let documents = req.documents.clone();
@@ -413,12 +415,9 @@ async fn rerank(
             metrics_guard.set_tokens(total_tokens_est, 0);
             metrics_guard.set_success();
 
-            if let (Some(ref sa), Some(preauth)) = (&spend_auth, preauth_amount) {
+            if let Some(auth) = &authorized {
                 let actual_cost = backend.calculate_cost(total_tokens_est);
-                if let Err(e) = settle_billing(&state.billing, sa, preauth, Some(actual_cost)).await
-                {
-                    tracing::error!(error = %e, "on-chain settlement failed");
-                }
+                settle_request(&state, auth, Some(actual_cost)).await;
             }
 
             let results: Vec<RerankResultEntry> = resp
