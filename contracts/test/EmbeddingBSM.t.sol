@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Deploy} from "../script/Deploy.s.sol";
 import {EmbeddingBSM} from "../src/EmbeddingBSM.sol";
 import {BlueprintServiceManagerBase} from "tnt-core/BlueprintServiceManagerBase.sol";
 
@@ -11,32 +11,21 @@ contract EmbeddingBSMTest is Test {
     address public tsUSD;
 
     address public tangleCore = address(0xC0DE);
-    address public owner = address(0xBEEF);
+    address public owner;
     address public operator1 = address(0x1111);
     address public operator2 = address(0x2222);
     address public user = address(0x3333);
 
     function setUp() public {
         tsUSD = address(0xAAAA);
-
-        EmbeddingBSM impl_ = new EmbeddingBSM();
-        bytes memory initData = abi.encodeCall(EmbeddingBSM.initialize, (tsUSD, tangleCore));
-        vm.prank(owner);
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl_), initData);
-        bsm = EmbeddingBSM(payable(address(proxy)));
-
+        vm.etch(tangleCore, hex"00");
+        vm.setEnv("TANGLE_CORE", vm.toString(tangleCore));
+        vm.setEnv("TSUSD_ADDRESS", vm.toString(tsUSD));
+        // The shipped deploy script, configured from deploy/config.example.json.
+        bsm = EmbeddingBSM(payable(new Deploy().run()));
+        owner = bsm.blueprintOwner();
         vm.prank(tangleCore);
-
         bsm.onBlueprintCreated(1, owner, tangleCore);
-
-        vm.prank(owner);
-        bsm.configureModel(
-            "BAAI/bge-large-en-v1.5",
-            uint32(1024), // dimensions
-            uint32(512), // max sequence length
-            uint64(10), // price per 1K tokens
-            uint32(8_000) // min VRAM
-        );
     }
 
     // --- Initialization ---
@@ -61,7 +50,7 @@ contract EmbeddingBSMTest is Test {
         assertEq(mc.dimensions, 1024);
         assertEq(mc.maxSequenceLength, 512);
         assertEq(mc.pricePer1kTokens, 10);
-        assertEq(mc.minGpuVramMib, 8_000);
+        assertEq(mc.minGpuVramMib, 4_096);
         assertTrue(mc.enabled);
     }
 
@@ -129,13 +118,13 @@ contract EmbeddingBSMTest is Test {
             uint32(1024),
             uint32(512),
             uint32(1),
-            uint32(4_000), // below 8_000 minimum
+            uint32(2_048), // below the 4_096 minimum
             "NVIDIA RTX 3060",
             "https://op1.example.com"
         );
 
         vm.prank(tangleCore);
-        vm.expectRevert(abi.encodeWithSelector(EmbeddingBSM.InsufficientGpuCapability.selector, 8_000, 4_000));
+        vm.expectRevert(abi.encodeWithSelector(EmbeddingBSM.InsufficientGpuCapability.selector, 4_096, 2_048));
         bsm.onRegister(operator1, regData);
     }
 
@@ -198,8 +187,6 @@ contract EmbeddingBSMTest is Test {
         assertTrue(bsm.canJoin(1, operator1));
         assertFalse(bsm.canJoin(1, operator2));
     }
-
-    // --- Helpers ---
 
     function _registerOperator(address op) internal {
         bytes memory regData = abi.encode(

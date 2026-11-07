@@ -6,17 +6,25 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 
 /// Model-specific manager deployment; cargo-tangle registers the definition.
 contract Deploy is Script {
-    function run() external {
+    function run() external returns (address manager) {
         address registry = vm.envAddress("TANGLE_CORE");
         require(registry.code.length != 0, "TANGLE_CORE has no code");
         address token = vm.envAddress("TSUSD_ADDRESS");
+        // The operator config is the one source of the served model, its dimensions, price and VRAM floor.
+        string memory config = vm.readFile(vm.envOr("MODEL_CONFIG", string("../deploy/config.example.json")));
         vm.startBroadcast();
         EmbeddingBSM implementation = new EmbeddingBSM();
-        address manager = address(
+        manager = address(
             new ERC1967Proxy(address(implementation), abi.encodeCall(EmbeddingBSM.initialize, (token, registry)))
         );
-        console2.log("DEPLOY_EMBEDDING_BSM_IMPL=%s", vm.toString(address(implementation)));
+        EmbeddingBSM(payable(manager)).configureModel(
+            vm.parseJsonString(config, ".embedding.model"),
+            uint32(vm.parseJsonUint(config, ".embedding.dimensions")),
+            uint32(vm.parseJsonUint(config, ".embedding.max_sequence_length")),
+            uint64(vm.parseJsonUint(config, ".embedding.price_per_1k_tokens")),
+            uint32(vm.parseJsonUint(config, ".gpu.min_vram_mib"))
+        );
         vm.stopBroadcast();
-        console2.log("DEPLOY_EMBEDDING_BSM_PROXY=%s", vm.toString(manager));
+        console2.log("DEPLOY_MANAGER=%s", vm.toString(manager));
     }
 }
