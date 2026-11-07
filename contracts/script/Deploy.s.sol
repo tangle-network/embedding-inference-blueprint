@@ -9,7 +9,7 @@ contract Deploy is Script {
     function run() external returns (address manager) {
         address registry = vm.envAddress("TANGLE_CORE");
         require(registry.code.length != 0, "TANGLE_CORE has no code");
-        address token = vm.envAddress("TSUSD_ADDRESS");
+        address token = vm.envAddress("PAYMENT_TOKEN");
         // The operator config is the one source of the served model, its dimensions, price and VRAM floor.
         string memory config = vm.readFile(vm.envOr("MODEL_CONFIG", string("../deploy/config.example.json")));
         vm.startBroadcast();

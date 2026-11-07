@@ -20,7 +20,7 @@ contract EmbeddingBSMTest is Test {
         tsUSD = address(0xAAAA);
         vm.etch(tangleCore, hex"00");
         vm.setEnv("TANGLE_CORE", vm.toString(tangleCore));
-        vm.setEnv("TSUSD_ADDRESS", vm.toString(tsUSD));
+        vm.setEnv("PAYMENT_TOKEN", vm.toString(tsUSD));
         // The shipped deploy script, configured from deploy/config.example.json.
         bsm = EmbeddingBSM(payable(new Deploy().run()));
         owner = bsm.blueprintOwner();
